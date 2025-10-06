@@ -1,0 +1,185 @@
+service: snapit-burn-api
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: us-east-1
+  stage: ${opt:stage, 'prod'}
+
+  # Rate limiting
+  apiGateway:
+    throttle:
+      burstLimit: 300
+      rateLimit: 150
+    metrics: true
+
+  environment:
+    BURNS_TABLE: ${self:service}-burns-${self:provider.stage}
+    DOWNLOADS_TABLE: ${self:service}-downloads-${self:provider.stage}
+    BURN_BUCKET: ${self:service}-files-${self:provider.stage}
+    USERS_TABLE: snapit-forum-api-users-${self:provider.stage}  # Shared
+    JWT_SECRET: ${ssm:/snapit-forum/prod/JWT_SECRET}
+    STRIPE_SECRET_KEY: ${ssm:/snapit-forum/prod/STRIPE_SECRET_KEY}
+
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:Query
+            - dynamodb:Scan
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+          Resource:
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.BURNS_TABLE}"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.BURNS_TABLE}/index/*"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DOWNLOADS_TABLE}"
+        - Effect: Allow
+          Action:
+            - s3:GetObject
+            - s3:PutObject
+            - s3:DeleteObject
+          Resource:
+            - "arn:aws:s3:::${self:provider.environment.BURN_BUCKET}/*"
+        - Effect: Allow
+          Action:
+            - ssm:GetParameter
+            - ssm:GetParameters
+          Resource:
+            - "arn:aws:ssm:${self:provider.region}:*:parameter/snapit-forum/prod/*"
+        - Effect: Allow
+          Action:
+            - ses:SendEmail
+          Resource: "*"
+
+package:
+  patterns:
+    - '!burn-app/**'
+    - '!node_modules/**'
+    - '!.git/**'
+
+functions:
+  # Shared authorizer
+  authorizer:
+    handler: src/handlers/auth.authorizer
+
+  # Upload (anonymous or authenticated)
+  upload:
+    handler: src/handlers/burns.upload
+    timeout: 30
+    events:
+      - http:
+          path: upload
+          method: post
+          cors: true
+
+  # Get burn metadata (before download)
+  getBurn:
+    handler: src/handlers/burns.get
+    events:
+      - http:
+          path: burns/{burnId}
+          method: get
+          cors: true
+
+  # Download file (consumes download count)
+  download:
+    handler: src/handlers/burns.download
+    events:
+      - http:
+          path: burns/{burnId}/download
+          method: post
+          cors: true
+
+  # List user's burns (authenticated)
+  listBurns:
+    handler: src/handlers/burns.list
+    events:
+      - http:
+          path: burns
+          method: get
+          cors: true
+          authorizer:
+            name: authorizer
+            resultTtlInSeconds: 300
+
+  # Delete burn manually
+  deleteBurn:
+    handler: src/handlers/burns.delete
+    events:
+      - http:
+          path: burns/{burnId}
+          method: delete
+          cors: true
+          authorizer:
+            name: authorizer
+            resultTtlInSeconds: 300
+
+resources:
+  Resources:
+    BurnsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.BURNS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: burnId
+            AttributeType: S
+          - AttributeName: userId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: burnId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: UserIndex
+            KeySchema:
+              - AttributeName: userId
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+        TimeToLiveSpecification:
+          AttributeName: expiresAt
+          Enabled: true
+
+    DownloadsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.DOWNLOADS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: downloadId
+            AttributeType: S
+          - AttributeName: burnId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: downloadId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: BurnIndex
+            KeySchema:
+              - AttributeName: burnId
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+
+    BurnBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:provider.environment.BURN_BUCKET}
+        LifecycleConfiguration:
+          Rules:
+            - Id: DeleteOldFiles
+              Status: Enabled
+              ExpirationInDays: 30
+        CorsConfiguration:
+          CorsRules:
+            - AllowedOrigins:
+                - '*'
+              AllowedMethods:
+                - GET
+                - PUT
+                - POST
+              AllowedHeaders:
+                - '*'
