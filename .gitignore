@@ -1,2 +1,31 @@
+# Dependencies
 node_modules/
-.serverless
+package-lock.json
+
+# Serverless
+.serverless/
+.env
+.env.*
+
+# Logs
+*.log
+npm-debug.log*
+
+# Documentation (keep local only)
+*.md
+!README.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+dist/
+build/
+*.tgz
