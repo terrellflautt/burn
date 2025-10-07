@@ -6,12 +6,10 @@ provider:
   region: us-east-1
   stage: ${opt:stage, 'prod'}
 
-  # Rate limiting
+  # API Gateway configuration
   apiGateway:
-    throttle:
-      burstLimit: 300
-      rateLimit: 150
     metrics: true
+    shouldStartNameWithService: true
 
   environment:
     BURNS_TABLE: ${self:service}-burns-${self:provider.stage}
@@ -71,9 +69,17 @@ functions:
     timeout: 30
     events:
       - http:
-          path: upload
+          path: burns
           method: post
-          cors: true
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+            allowCredentials: false
 
   # Get burn metadata (before download)
   getBurn:
@@ -82,7 +88,15 @@ functions:
       - http:
           path: burns/{burnId}
           method: get
-          cors: true
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+            allowCredentials: false
 
   # Download file (consumes download count)
   download:
@@ -91,7 +105,15 @@ functions:
       - http:
           path: burns/{burnId}/download
           method: post
-          cors: true
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+            allowCredentials: false
 
   # List user's burns (authenticated)
   listBurns:
@@ -100,10 +122,18 @@ functions:
       - http:
           path: burns
           method: get
-          cors: true
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+            allowCredentials: false
           authorizer:
             name: authorizer
-            resultTtlInSeconds: 300
+            resultTtlInSeconds: 0
 
   # Delete burn manually
   deleteBurn:
@@ -112,10 +142,18 @@ functions:
       - http:
           path: burns/{burnId}
           method: delete
-          cors: true
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+            allowCredentials: false
           authorizer:
             name: authorizer
-            resultTtlInSeconds: 300
+            resultTtlInSeconds: 0
 
 resources:
   Resources:
@@ -183,3 +221,39 @@ resources:
                 - POST
               AllowedHeaders:
                 - '*'
+
+    # API Gateway Usage Plan (enterprise-grade rate limiting)
+    ApiGatewayUsagePlan:
+      Type: AWS::ApiGateway::UsagePlan
+      DependsOn: ApiGatewayRestApi
+      Properties:
+        UsagePlanName: snapit-burn-${self:provider.stage}
+        Description: Usage plan for SnapIT Burn API
+        Throttle:
+          BurstLimit: 300
+          RateLimit: 150
+        Quota:
+          Limit: 1000000
+          Period: MONTH
+        ApiStages:
+          - ApiId:
+              Ref: ApiGatewayRestApi
+            Stage: ${self:provider.stage}
+
+    # API Key for monitoring and advanced usage tracking
+    ApiGatewayApiKey:
+      Type: AWS::ApiGateway::ApiKey
+      Properties:
+        Name: snapit-burn-api-key-${self:provider.stage}
+        Description: API key for SnapIT Burn
+        Enabled: true
+
+    # Link API Key to Usage Plan
+    ApiGatewayUsagePlanKey:
+      Type: AWS::ApiGateway::UsagePlanKey
+      Properties:
+        KeyId:
+          Ref: ApiGatewayApiKey
+        KeyType: API_KEY
+        UsagePlanId:
+          Ref: ApiGatewayUsagePlan
