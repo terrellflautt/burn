@@ -80,6 +80,9 @@ functions:
               - X-Api-Key
               - X-Amz-Security-Token
             allowCredentials: false
+            methods:
+              - OPTIONS
+              - POST
 
   # Get burn metadata (before download)
   getBurn:
@@ -97,6 +100,9 @@ functions:
               - X-Api-Key
               - X-Amz-Security-Token
             allowCredentials: false
+            methods:
+              - OPTIONS
+              - GET
 
   # Download file (consumes download count)
   download:
@@ -114,6 +120,9 @@ functions:
               - X-Api-Key
               - X-Amz-Security-Token
             allowCredentials: false
+            methods:
+              - OPTIONS
+              - POST
 
   # List user's burns (authenticated)
   listBurns:
@@ -131,6 +140,9 @@ functions:
               - X-Api-Key
               - X-Amz-Security-Token
             allowCredentials: false
+            methods:
+              - OPTIONS
+              - GET
           authorizer:
             name: authorizer
             resultTtlInSeconds: 0
@@ -151,6 +163,9 @@ functions:
               - X-Api-Key
               - X-Amz-Security-Token
             allowCredentials: false
+            methods:
+              - OPTIONS
+              - DELETE
           authorizer:
             name: authorizer
             resultTtlInSeconds: 0
