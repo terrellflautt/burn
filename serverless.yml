@@ -55,7 +55,6 @@ provider:
 package:
   patterns:
     - '!burn-app/**'
-    - '!node_modules/**'
     - '!.git/**'
 
 functions:
