@@ -12,8 +12,7 @@ package-lock.json
 npm-debug.log*
 
 # Documentation (keep local only)
-*.md
-!README.md
+# *.md files are allowed for documentation
 
 # IDE
 .vscode/
