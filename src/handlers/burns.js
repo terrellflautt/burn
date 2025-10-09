@@ -2,7 +2,10 @@ const AWS = require('aws-sdk');
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 
-const s3 = new AWS.S3();
+const s3 = new AWS.S3({
+  region: 'us-east-1',
+  signatureVersion: 'v4'
+});
 const dynamodb = new AWS.DynamoDB.DocumentClient();
 
 const BURNS_TABLE = process.env.BURNS_TABLE;
