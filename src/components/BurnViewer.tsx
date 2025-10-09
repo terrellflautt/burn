@@ -3,21 +3,36 @@ import { useParams, useNavigate } from 'react-router-dom';
 
 const API_URL = 'https://gavcsyy3ka.execute-api.us-east-1.amazonaws.com/prod';
 
-interface BurnData {
+interface BurnMetadata {
   burnId: string;
   fileName: string;
-  fileData: string;
   fileSize: number;
-  contentType?: string;
+  uploadedAt: string;
+  expiresAt: string;
+  currentDownloads: number;
+  maxDownloads: number | string;
+  requiresPassword: boolean;
+  customMessage?: string;
+}
+
+interface DownloadResponse {
+  downloadUrl: string;
+  fileName: string;
+  fileSize: number;
+  expiresIn: number;
+  remainingDownloads: number | string;
+  willBeDeleted: boolean;
+  message?: string;
 }
 
 export const BurnViewer: React.FC = () => {
   const { burnId } = useParams<{ burnId: string }>();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [burnData, setBurnData] = useState<BurnData | null>(null);
+  const [burnData, setBurnData] = useState<BurnMetadata | null>(null);
   const [error, setError] = useState('');
   const [downloaded, setDownloaded] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     if (burnId) {
@@ -35,6 +50,9 @@ export const BurnViewer: React.FC = () => {
       if (!response.ok) {
         if (response.status === 404) {
           setError('This file has already been viewed and destroyed, or never existed.');
+        } else if (response.status === 410) {
+          const errorData = await response.json();
+          setError(errorData.error || 'This file has been deleted or expired.');
         } else {
           setError('Failed to retrieve file. Please check the link and try again.');
         }
@@ -52,34 +70,51 @@ export const BurnViewer: React.FC = () => {
     }
   };
 
-  const downloadFile = () => {
-    if (!burnData) return;
+  const downloadFile = async () => {
+    if (!burnData || !burnId) return;
 
+    setDownloading(true);
     try {
-      // Decode base64 to binary
-      const binaryString = atob(burnData.fileData);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
+      // Step 1: Request download URL from API
+      const response = await fetch(`${API_URL}/burns/${burnId}/download`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to get download URL');
       }
 
-      // Create blob and download
-      const blob = new Blob([bytes], {
-        type: burnData.contentType || 'application/octet-stream'
-      });
+      const downloadData: DownloadResponse = await response.json();
+
+      // Step 2: Download file from S3 presigned URL
+      const fileResponse = await fetch(downloadData.downloadUrl);
+      if (!fileResponse.ok) {
+        throw new Error('Failed to download file from storage');
+      }
+
+      const blob = await fileResponse.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = burnData.fileName;
+      link.download = downloadData.fileName;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
 
       setDownloaded(true);
+
+      if (downloadData.message) {
+        console.log(downloadData.message);
+      }
     } catch (err) {
       console.error('Download failed:', err);
-      alert('Failed to download file. Please try again.');
+      alert(`Failed to download file: ${err instanceof Error ? err.message : 'Please try again.'}`);
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -149,8 +184,8 @@ export const BurnViewer: React.FC = () => {
           <p>This file will be permanently deleted after you download it.</p>
         </div>
 
-        <button onClick={downloadFile} className="download-btn">
-          📥 Download & Destroy
+        <button onClick={downloadFile} disabled={downloading} className="download-btn">
+          {downloading ? 'Downloading...' : '📥 Download & Destroy'}
         </button>
 
         <button onClick={() => navigate('/')} className="cancel-btn">

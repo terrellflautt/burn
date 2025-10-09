@@ -49,31 +49,52 @@ export const BurnUpload: React.FC = () => {
 
     setUploading(true);
     try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64 = reader.result?.toString().split(',')[1];
+      // Step 1: Get presigned upload URL from API
+      const createResponse = await fetch(`${API_URL}/burns`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileName: file.name,
+          fileSize: file.size,
+          contentType: file.type || 'application/octet-stream',
+          expiresIn: 86400, // 24 hours in seconds
+          maxDownloads: 1 // One-time view
+        })
+      });
 
-        const response = await fetch(`${API_URL}/burns`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fileName: file.name,
-            fileData: base64,
-            oneTimeView: true,
-            expiresInMinutes: 1440 // 24 hours
-          })
-        });
+      if (!createResponse.ok) {
+        const errorData = await createResponse.json();
+        throw new Error(errorData.error || 'Failed to create burn');
+      }
 
-        const data = await response.json();
-        setBurnData({
-          ...data,
-          url: `${window.location.origin}/view/${data.burnId}`
-        });
-      };
-      reader.readAsDataURL(file);
+      const data = await createResponse.json();
+      console.log('Burn created:', data);
+
+      // Step 2: Upload file to S3 using presigned URL
+      const uploadResponse = await fetch(data.uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream'
+        },
+        body: file
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error('Failed to upload file to S3');
+      }
+
+      // Step 3: Set burn data with correct URL using shareUrl from backend
+      setBurnData({
+        burnId: data.burnId,
+        fileName: file.name,
+        fileSize: file.size,
+        expiresAt: new Date(data.expiresAt).getTime(),
+        oneTimeView: true,
+        url: data.shareUrl || `https://burn.snapitsoftware.com/d/${data.shortLink}`
+      });
     } catch (error) {
       console.error('Upload failed:', error);
-      alert('Upload failed. Please try again.');
+      alert(`Upload failed: ${error instanceof Error ? error.message : 'Please try again.'}`);
     } finally {
       setUploading(false);
     }
@@ -153,8 +174,11 @@ export const BurnUpload: React.FC = () => {
         )}
         <input
           ref={fileInputRef}
+          id="burn-file-input"
+          name="burnFile"
           type="file"
           onChange={handleFileChange}
+          aria-label="Upload file for burn"
           style={{ display: 'none' }}
         />
       </div>

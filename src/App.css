@@ -1,7 +1,7 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, sans-serif; background: linear-gradient(135deg, #FF1493 0%, #000000 100%); min-height: 100vh; }
-.App { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
-.upload-container, .success-container { background: #FFFDD0; padding: 3rem; border-radius: 20px; box-shadow: 0 20px 60px rgba(255,20,147,0.3); max-width: 500px; width: 100%; text-align: center; }
+.App { min-height: 100vh; display: flex; flex-direction: column; }
+.upload-container, .success-container { background: #FFFDD0; padding: 3rem; border-radius: 20px; box-shadow: 0 20px 60px rgba(255,20,147,0.3); max-width: 500px; width: 100%; text-align: center; margin: auto; margin-top: 40px; margin-bottom: 40px; }
 .logo { font-size: 4rem; margin-bottom: 1rem; }
 h1 { color: #FF1493; margin-bottom: 0.5rem; }
 .tagline, .success-message { color: #666; margin-bottom: 2rem; }
@@ -27,7 +27,7 @@ h1 { color: #FF1493; margin-bottom: 0.5rem; }
 .file-info { background: #f8f9fa; padding: 1.5rem; border-radius: 10px; margin: 1.5rem 0; text-align: left; }
 .file-info p { margin: 0.5rem 0; }
 .new-burn-btn { padding: 1rem 2rem; background: #f0f0f0; border: none; border-radius: 10px; cursor: pointer; font-weight: 600; }
-.viewer-container { background: #FFFDD0; padding: 3rem; border-radius: 20px; box-shadow: 0 20px 60px rgba(255,20,147,0.3); max-width: 500px; width: 100%; text-align: center; }
+.viewer-container { background: #FFFDD0; padding: 3rem; border-radius: 20px; box-shadow: 0 20px 60px rgba(255,20,147,0.3); max-width: 500px; width: 100%; text-align: center; margin: auto; margin-top: 40px; margin-bottom: 40px; }
 .viewer-message { color: #666; margin-bottom: 2rem; }
 .error-message { color: #FF1493; margin-bottom: 2rem; font-weight: 500; }
 .error-icon { filter: grayscale(100%); }
