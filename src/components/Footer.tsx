@@ -12,7 +12,6 @@ export const Footer: React.FC = () => {
             <li><a href="https://snapitforms.com" target="_blank" rel="noopener noreferrer">SnapIT Forms</a></li>
             <li><a href="https://snapitanalytics.com" target="_blank" rel="noopener noreferrer">SnapIT Analytics</a></li>
             <li><a href="https://snapitagent.com" target="_blank" rel="noopener noreferrer">SnapIT Agent</a></li>
-            <li><a href="https://snapitsoft.com" target="_blank" rel="noopener noreferrer">SnapIT Soft</a></li>
           </ul>
         </div>
 
