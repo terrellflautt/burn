@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useToast } from './ToastContainer';
 
 const API_URL = 'https://gavcsyy3ka.execute-api.us-east-1.amazonaws.com/prod';
 
@@ -28,6 +29,7 @@ interface DownloadResponse {
 export const BurnViewer: React.FC = () => {
   const { burnId } = useParams<{ burnId: string }>();
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [burnData, setBurnData] = useState<BurnMetadata | null>(null);
   const [error, setError] = useState('');
@@ -105,14 +107,27 @@ export const BurnViewer: React.FC = () => {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
 
+      // Confirm download to backend (this will delete the file if max downloads reached)
+      try {
+        await fetch(`${API_URL}/burns/${burnId}/confirm`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        });
+      } catch (confirmErr) {
+        console.error('Failed to confirm download:', confirmErr);
+        // Don't fail the whole download if confirm fails
+      }
+
       setDownloaded(true);
+      showToast('File downloaded successfully!', 'success');
 
       if (downloadData.message) {
         console.log(downloadData.message);
       }
     } catch (err) {
       console.error('Download failed:', err);
-      alert(`Failed to download file: ${err instanceof Error ? err.message : 'Please try again.'}`);
+      showToast(`Failed to download file: ${err instanceof Error ? err.message : 'Please try again.'}`, 'error');
     } finally {
       setDownloading(false);
     }

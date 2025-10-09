@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { useToast } from './ToastContainer';
 
 const API_URL = 'https://gavcsyy3ka.execute-api.us-east-1.amazonaws.com/prod';
 
@@ -12,6 +13,7 @@ interface BurnFile {
 }
 
 export const BurnUpload: React.FC = () => {
+  const { showToast } = useToast();
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [burnData, setBurnData] = useState<BurnFile | null>(null);
@@ -94,7 +96,7 @@ export const BurnUpload: React.FC = () => {
       });
     } catch (error) {
       console.error('Upload failed:', error);
-      alert(`Upload failed: ${error instanceof Error ? error.message : 'Please try again.'}`);
+      showToast(`Upload failed: ${error instanceof Error ? error.message : 'Please try again.'}`, 'error');
     } finally {
       setUploading(false);
     }
@@ -103,7 +105,7 @@ export const BurnUpload: React.FC = () => {
   const copyToClipboard = () => {
     if (burnData) {
       navigator.clipboard.writeText(burnData.url);
-      alert('Link copied to clipboard!');
+      showToast('Link copied to clipboard!', 'success');
     }
   };
 
