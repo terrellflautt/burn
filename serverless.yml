@@ -43,6 +43,12 @@ provider:
             - "arn:aws:s3:::${self:provider.environment.BURN_BUCKET}/*"
         - Effect: Allow
           Action:
+            - s3:ListBucket
+            - s3:GetBucketLocation
+          Resource:
+            - "arn:aws:s3:::${self:provider.environment.BURN_BUCKET}"
+        - Effect: Allow
+          Action:
             - ssm:GetParameter
             - ssm:GetParameters
           Resource:
