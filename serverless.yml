@@ -109,12 +109,32 @@ functions:
               - OPTIONS
               - GET
 
-  # Download file (consumes download count)
+  # Download file (get presigned URL)
   download:
     handler: src/handlers/burns.download
     events:
       - http:
           path: burns/{burnId}/download
+          method: post
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+            allowCredentials: false
+            methods:
+              - OPTIONS
+              - POST
+
+  # Confirm download and delete file
+  confirmDownload:
+    handler: src/handlers/burns.confirm
+    events:
+      - http:
+          path: burns/{burnId}/confirm
           method: post
           cors:
             origin: '*'

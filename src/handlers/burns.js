@@ -288,6 +288,108 @@ exports.get = async (event) => {
 };
 
 /**
+ * CONFIRM - Confirm download completion and delete file
+ * POST /burns/:burnId/confirm
+ */
+exports.confirm = async (event) => {
+  try {
+    const { burnId } = event.pathParameters;
+
+    if (!burnId) {
+      return error('burnId is required');
+    }
+
+    // Get burn record
+    let burn = await dynamodb.get({
+      TableName: BURNS_TABLE,
+      Key: { burnId }
+    }).promise();
+
+    // If not found by burnId, try shortLink
+    if (!burn.Item) {
+      const result = await dynamodb.scan({
+        TableName: BURNS_TABLE,
+        FilterExpression: 'shortLink = :shortLink',
+        ExpressionAttributeValues: {
+          ':shortLink': burnId
+        }
+      }).promise();
+
+      if (result.Items && result.Items.length > 0) {
+        burn = { Item: result.Items[0] };
+      }
+    }
+
+    if (!burn.Item) {
+      return error('Burn not found', 404);
+    }
+
+    const burnData = burn.Item;
+
+    // Increment download counter
+    const updateResult = await dynamodb.update({
+      TableName: BURNS_TABLE,
+      Key: { burnId: burnData.burnId },
+      UpdateExpression: 'SET currentDownloads = currentDownloads + :inc',
+      ExpressionAttributeValues: {
+        ':inc': 1
+      },
+      ReturnValues: 'ALL_NEW'
+    }).promise();
+
+    const updatedBurn = updateResult.Attributes;
+
+    // Log successful download
+    await dynamodb.put({
+      TableName: DOWNLOADS_TABLE,
+      Item: {
+        downloadId: uuidv4(),
+        burnId: burnData.burnId,
+        downloadedAt: Date.now(),
+        downloaderIp: event.requestContext?.identity?.sourceIp || 'unknown',
+        downloaderUserAgent: event.headers?.['User-Agent'] || 'unknown',
+        success: true,
+        errorReason: null
+      }
+    }).promise();
+
+    // Check if max downloads reached
+    const shouldDelete = burnData.maxDownloads !== -1 &&
+                        updatedBurn.currentDownloads >= burnData.maxDownloads;
+
+    // Delete if max downloads reached
+    if (shouldDelete) {
+      // Delete from S3
+      await s3.deleteObject({
+        Bucket: BURN_BUCKET,
+        Key: burnData.fileKey
+      }).promise();
+
+      // Mark as deleted in DynamoDB
+      await dynamodb.update({
+        TableName: BURNS_TABLE,
+        Key: { burnId: burnData.burnId },
+        UpdateExpression: 'SET isDeleted = :deleted, deleteReason = :reason',
+        ExpressionAttributeValues: {
+          ':deleted': true,
+          ':reason': 'max-downloads'
+        }
+      }).promise();
+    }
+
+    return success({
+      success: true,
+      deleted: shouldDelete,
+      message: shouldDelete ? 'File has been permanently deleted.' : 'Download confirmed.'
+    });
+
+  } catch (err) {
+    console.error('Confirm error:', err);
+    return error('Failed to confirm download', 500);
+  }
+};
+
+/**
  * DOWNLOAD - Verify password and generate presigned download URL
  * POST /burns/:burnId/download
  */
@@ -371,79 +473,31 @@ exports.download = async (event) => {
       }
     }
 
-    // Atomically increment download counter
-    const updateResult = await dynamodb.update({
-      TableName: BURNS_TABLE,
-      Key: { burnId: burnData.burnId },
-      UpdateExpression: 'SET currentDownloads = currentDownloads + :inc',
-      ExpressionAttributeValues: {
-        ':inc': 1
-      },
-      ReturnValues: 'ALL_NEW'
-    }).promise();
-
-    const updatedBurn = updateResult.Attributes;
-
-    // Generate presigned download URL
+    // Generate presigned download URL - let it be valid for 5 minutes
     const downloadUrl = s3.getSignedUrl('getObject', {
       Bucket: BURN_BUCKET,
       Key: burnData.fileKey,
-      Expires: 3600, // URL valid for 1 hour
+      Expires: 300, // URL valid for 5 minutes
       ResponseContentDisposition: `attachment; filename="${burnData.fileName}"`
     });
 
-    // Log successful download
-    await dynamodb.put({
-      TableName: DOWNLOADS_TABLE,
-      Item: {
-        downloadId: uuidv4(),
-        burnId: burnData.burnId,
-        downloadedAt: Date.now(),
-        downloaderIp: event.requestContext?.identity?.sourceIp || 'unknown',
-        downloaderUserAgent: event.headers?.['User-Agent'] || 'unknown',
-        downloaderEmail,
-        success: true,
-        errorReason: null
-      }
-    }).promise();
+    // Check if this will be the final allowed download
+    const willBeLastDownload = burnData.maxDownloads !== -1 &&
+                                (burnData.currentDownloads + 1) >= burnData.maxDownloads;
 
-    // Check if max downloads reached after this download
-    const shouldDelete = burnData.maxDownloads !== -1 &&
-                        updatedBurn.currentDownloads >= burnData.maxDownloads;
-
-    // Auto-delete if max downloads reached
-    if (shouldDelete) {
-      // Delete from S3
-      await s3.deleteObject({
-        Bucket: BURN_BUCKET,
-        Key: burnData.fileKey
-      }).promise();
-
-      // Mark as deleted in DynamoDB
-      await dynamodb.update({
-        TableName: BURNS_TABLE,
-        Key: { burnId: burnData.burnId },
-        UpdateExpression: 'SET isDeleted = :deleted, deleteReason = :reason',
-        ExpressionAttributeValues: {
-          ':deleted': true,
-          ':reason': 'max-downloads'
-        }
-      }).promise();
-    }
-
-    // Calculate remaining downloads
+    // Calculate remaining downloads (after this one completes)
     const remainingDownloads = burnData.maxDownloads === -1
       ? 'unlimited'
-      : Math.max(0, burnData.maxDownloads - updatedBurn.currentDownloads);
+      : Math.max(0, burnData.maxDownloads - (burnData.currentDownloads + 1));
 
     return success({
       downloadUrl,
       fileName: burnData.fileName,
       fileSize: burnData.fileSize,
-      expiresIn: 3600, // URL valid for 1 hour
+      expiresIn: 300, // URL valid for 5 minutes
       remainingDownloads,
-      willBeDeleted: shouldDelete,
-      message: shouldDelete ? 'This was the final download. File has been deleted.' : null
+      willBeDeleted: willBeLastDownload,
+      message: willBeLastDownload ? 'This is your final download. File will be deleted after this.' : null
     });
 
   } catch (err) {
